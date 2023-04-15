@@ -6,11 +6,12 @@ contract Lottery {
     uint public minimumBet;
     uint public randomSeed;
     uint public winningIndex;
+    uint public startTime;
 
     constructor(uint _minimumBet) {
         manager = msg.sender;
         minimumBet = _minimumBet;
-        randomSeed = block.timestamp; // use block timestamp as the initial random seed
+        startTime = block.timestamp;
     }
 
     function enter() public payable {
@@ -20,18 +21,39 @@ contract Lottery {
 
     function selectWinner() public restricted {
         require(players.length > 0, "No players entered.");
-        
-        // Generate a random number based on the block hash and random seed
-        bytes32 randomHash = keccak256(abi.encodePacked(blockhash(block.number - 1), randomSeed));
-        uint randomNumber = uint(randomHash) % players.length;
-        winningIndex = randomNumber;
 
-        // Transfer the winnings to the winner
+        // pick a random winner
+        winningIndex = generateRandomNumber(players.length);
+
+        // transfer the winnings to the winner
         players[winningIndex].transfer(address(this).balance);
-        
-        // Reset the game
+
+        // reset the game
         players = new address payable[](0);
-        randomSeed = uint(keccak256(abi.encode(randomHash, blockhash(block.number - 1))));
+        startTime = 0;
+    }
+
+    function generateRandomNumber(
+        uint256 upperLimit
+    ) private view returns (uint256) {
+        bytes32 seed = 0;
+        while (seed == 0) {
+            seed = generateSeed();
+        }
+        return uint256(seed) % upperLimit;
+    }
+
+    function generateSeed() private view returns (bytes32) {
+        require(startTime > 0, "Lottery has not started yet");
+
+        uint256 blockDelta = block.timestamp - startTime;
+
+        // ensure blocktime isn't the same
+        if (blockDelta == 0) {
+            return 0;
+        }
+
+        return keccak256(abi.encodePacked(blockDelta));
     }
 
     function getPlayers() public view returns (address payable[] memory) {
@@ -39,7 +61,10 @@ contract Lottery {
     }
 
     modifier restricted() {
-        require(msg.sender == manager, "Only the manager can perform this action.");
+        require(
+            msg.sender == manager,
+            "Only the manager can perform this action."
+        );
         _;
     }
 }
